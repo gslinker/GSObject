@@ -20,6 +20,7 @@
 + (id<NSObject>) create:(Class) class fromJsonData:(NSData *)jsonData;
 
 + (NSDictionary<NSString *,id> *)dictionaryWithValues : (id) object;
++ (BOOL) hasPropertyNamed:(NSString*) propertyName forObject: (id) object;
 + (Class)classOfPropertyNamed:(NSString*) propertyName forObject: (id) object;
 
 
