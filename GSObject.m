@@ -88,63 +88,67 @@
 
 - (void)setValue:(id)value forKey:(NSString *)key {
     
-    Class propertClass = [GSObject classOfPropertyNamed:key forObject:self];
+    BOOL hasProperty = [GSObject hasPropertyNamed:key forObject:self];
     
-    if ( [value isKindOfClass:[NSDictionary class]] ) {
+    if(YES == hasProperty)
+    {
+        Class propertClass = [GSObject classOfPropertyNamed:key forObject:self];
         
-        //If the value is a dictionary, is this a dictionary of property values to instantiate a GSObject?
-        
-        if([propertClass isSubclassOfClass:[GSObject class]])
-        {
-            id temp = [super valueForKey:key];
-            if(temp == nil)
-            {
-                
-                temp = [[propertClass alloc]init];
-                [super setValue:temp forKey:key];
-            }
-
-            [temp setValuesForKeysWithDictionary:value];
-        }
-        else //This is just a dictionary value for a dictionary property
-        {
-            [super setValue:value forKey:key];
-        }
-        
-    }
-    else {
-        @try {
+        if ( [value isKindOfClass:[NSDictionary class]] ) {
             
-            if( [propertClass isSubclassOfClass:[NSObject class]])
+            //If the value is a dictionary, is this a dictionary of property values to instantiate a GSObject?
+            
+            if([propertClass isSubclassOfClass:[GSObject class]])
             {
-                SEL selector = NSSelectorFromString(@"initWithJsonValue:");
-                
-                if ([[propertClass class] respondsToSelector:selector]) {
-                    NSMethodSignature *signature = [[propertClass class] methodSignatureForSelector:selector];
-                    NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
-                    [invocation setSelector:selector];
-                    [invocation setArgument:&value atIndex:2];
-                    [invocation setTarget:[propertClass class]];
-                    [invocation invoke];
-                    id results = nil;
-                    [invocation getReturnValue:&results];
-                    value = results;    //change the value to the newly created json value results
+                id temp = [super valueForKey:key];
+                if(temp == nil)
+                {
+                    
+                    temp = [[propertClass alloc]init];
+                    [super setValue:temp forKey:key];
                 }
                 
-                [super setValue:value forKey:key];
-
+                [temp setValuesForKeysWithDictionary:value];
             }
-            else {
+            else //This is just a dictionary value for a dictionary property
+            {
                 [super setValue:value forKey:key];
             }
+            
         }
-        @catch (NSException *exception) {
-        }
-        @finally {
+        else {
+            @try {
+                
+                if( [propertClass isSubclassOfClass:[NSObject class]])
+                {
+                    SEL selector = NSSelectorFromString(@"initWithJsonValue:");
+                    
+                    if ([[propertClass class] respondsToSelector:selector]) {
+                        NSMethodSignature *signature = [[propertClass class] methodSignatureForSelector:selector];
+                        NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+                        [invocation setSelector:selector];
+                        [invocation setArgument:&value atIndex:2];
+                        [invocation setTarget:[propertClass class]];
+                        [invocation invoke];
+                        id results = nil;
+                        [invocation getReturnValue:&results];
+                        value = results;    //change the value to the newly created json value results
+                    }
+                    
+                    [super setValue:value forKey:key];
+                    
+                }
+                else {
+                    //properties that are not objects, like long, float, char, etc.
+                    [super setValue:value forKey:key];
+                }
+            }
+            @catch (NSException *exception) {
+            }
+            @finally {
+            }
         }
     }
-    
-    
 }
 
 - (NSData *) toJsonDataWithOptions:(NSJSONWritingOptions)opt {
@@ -219,21 +223,42 @@
     return results;
 }
 
-
++ (BOOL) hasPropertyNamed:(NSString*) propertyName forObject: (id) object {
+    BOOL results = NO;
+    
+    objc_property_t property = class_getProperty([object class], [propertyName UTF8String]);
+    
+    //Unknown properties are skipped
+    if(nil != property)
+    {
+        results = YES;
+    }
+    
+    return results;
+}
 
 + (Class)classOfPropertyNamed:(NSString*) propertyName forObject: (id) object {
-
+    
     Class propertyClass = nil;
     objc_property_t property = class_getProperty([object class], [propertyName UTF8String]);
-    NSString *propertyAttributes = [NSString stringWithCString:property_getAttributes(property) encoding:NSUTF8StringEncoding];
-    NSArray *splitPropertyAttributes = [propertyAttributes componentsSeparatedByString:@","];
-    if (splitPropertyAttributes.count > 1)
+    
+    //Unknown properties are skipped
+    if(nil != property)
     {
-        NSString *encodeType = splitPropertyAttributes[0];
-        NSArray *splitEncodeType = [encodeType componentsSeparatedByString:@"\""];
-        if([splitEncodeType count] > 1) {
-            NSString *className = splitEncodeType[1];
-            propertyClass = NSClassFromString(className);
+        NSString *propertyAttributes = [NSString stringWithCString:property_getAttributes(property) encoding:NSUTF8StringEncoding];
+        NSArray *splitPropertyAttributes = [propertyAttributes componentsSeparatedByString:@","];
+        if (splitPropertyAttributes.count > 1)
+        {
+            NSString *encodeType = splitPropertyAttributes[0];
+            NSArray *splitEncodeType = [encodeType componentsSeparatedByString:@"\""];
+            
+            //https://developer.apple.com/library/content/documentation/Cocoa/Conceptual/ObjCRuntimeGuide/Articles/ocrtPropertyIntrospection.html#//apple_ref/doc/uid/TP40008048-CH101
+            //The first element is the type, T@ will be a class, Tq is a long long, Ts short, Tc character, Td double, etc...
+            
+            if([splitEncodeType count] > 1) {
+                NSString *className = splitEncodeType[1];
+                propertyClass = NSClassFromString(className);
+            }
         }
     }
     return propertyClass;
